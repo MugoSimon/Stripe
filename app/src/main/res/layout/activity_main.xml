@@ -1,0 +1,27 @@
+<!-- res/layout/activity_payment.xml -->
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp">
+
+    <LinearLayout
+        android:id="@+id/paymentContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <com.stripe.android.view.CardInputWidget
+            android:id="@+id/cardInputWidget"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"/>
+
+        <Button
+            android:id="@+id/payButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Pay"/>
+    </LinearLayout>
+</RelativeLayout>
