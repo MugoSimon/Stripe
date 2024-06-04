@@ -30,6 +30,7 @@ android {
 
 dependencies {
 
+    classpath libs.gradle
     implementation libs.appcompat
     implementation libs.material
     implementation libs.activity
@@ -37,6 +38,9 @@ dependencies {
     testImplementation libs.junit
     androidTestImplementation libs.ext.junit
     androidTestImplementation libs.espresso.core
-    implementation 'com.stripe:stripe-java:25.10.0'
+    implementation libs.stripe.java
+    implementation libs.volley
+    implementation libs.stripe.android
+    implementation libs.lifecycle.viewmodel.compose
 
 }

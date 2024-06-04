@@ -12,16 +12,10 @@
         android:orientation="vertical"
         android:padding="16dp">
 
-        <com.stripe.android.view.CardInputWidget
-            android:id="@+id/cardInputWidget"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"/>
-
         <Button
             android:id="@+id/payButton"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="60dp"
             android:text="Pay"/>
     </LinearLayout>
 </RelativeLayout>
