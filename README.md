@@ -1,4 +1,3 @@
-```markdown
 # Stripe Payment Integration Sample
 
 This is a sample Android application that demonstrates the integration of Stripe's payment processing functionality. The app allows users to make payments using the Stripe Payment Sheet.
@@ -22,7 +21,7 @@ This is a sample Android application that demonstrates the integration of Stripe
 1. Clone the repository:
 
    ```
-   git clone https://github.com/your-username/stripe-payment-integration.git
+   git clone https://github.com/mugosimon/stripe.git
    ```
 
 2. Open the project in Android Studio.
@@ -74,4 +73,3 @@ If you find any bugs or have suggestions for improvements, please feel free to o
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
-```
