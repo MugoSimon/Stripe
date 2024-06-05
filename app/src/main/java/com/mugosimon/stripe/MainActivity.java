@@ -5,14 +5,12 @@ import android.util.Log;
 import android.widget.Button;
 import android.widget.Toast;
 
-import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 
 import com.android.volley.AuthFailureError;
 import com.android.volley.Request;
 import com.android.volley.RequestQueue;
-import com.android.volley.Response;
 import com.android.volley.VolleyError;
 import com.android.volley.toolbox.StringRequest;
 import com.android.volley.toolbox.Volley;
@@ -26,20 +24,23 @@ import org.json.JSONObject;
 
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
+import io.reactivex.rxjava3.core.Completable;
+import io.reactivex.rxjava3.core.Flowable;
+import io.reactivex.rxjava3.disposables.CompositeDisposable;
+import io.reactivex.rxjava3.functions.Function;
+import io.reactivex.rxjava3.schedulers.Schedulers;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
-
+    private final CompositeDisposable compositeDisposable = new CompositeDisposable();
     private Button buttonPayment;
     private String customerID;
     private String ephemeralKey;
     private String clientSecret;
     private PaymentSheet paymentSheet;
     private String publishableKey, secretKey;
-
-    private final ExecutorService executorService = Executors.newFixedThreadPool(4);
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -66,125 +67,159 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void createCustomer() {
-        executorService.execute(() -> {
-            Log.d(TAG, "createCustomer: Making request to create customer");
-            String url = "https://api.stripe.com/v1/customers";
-            StringRequest request = new StringRequest(Request.Method.POST, url,
-                    response -> {
-                        Log.d(TAG, "createCustomer: Received response for customer creation");
-                        try {
-                            JSONObject object = new JSONObject(response);
-                            customerID = object.getString("id");
-                            Log.d(TAG, "createCustomer: Customer ID: " + customerID);
-                            getEphemeralKey();
-                        } catch (JSONException e) {
-                            Log.e(TAG, "createCustomer: JSON exception: " + e.getLocalizedMessage());
-                            runOnUiThread(() -> showError(e.getLocalizedMessage()));
-                        }
-                    },
-                    error -> {
-                        Log.e(TAG, "createCustomer: Volley error: " + error.getLocalizedMessage());
-                        showError(error);
-                    }
-            ) {
-                @Override
-                public Map<String, String> getHeaders() throws AuthFailureError {
-                    Map<String, String> headers = new HashMap<>();
-                    headers.put("Authorization", "Bearer " + secretKey);
-                    return headers;
-                }
-            };
+        compositeDisposable.add(
+                Flowable.fromCallable(() -> {
+                            Log.d(TAG, "createCustomer: Making request to create customer");
+                            String url = "https://api.stripe.com/v1/customers";
+                            StringRequest request = new StringRequest(Request.Method.POST, url,
+                                    this::handleCustomerCreationResponse,
+                                    this::handleError
+                            ) {
+                                @Override
+                                public Map<String, String> getHeaders() throws AuthFailureError {
+                                    Map<String, String> headers = new HashMap<>();
+                                    headers.put("Authorization", "Bearer " + secretKey);
+                                    return headers;
+                                }
+                            };
+                            sendRequest(request);
+                            return true;
+                        })
+                        .subscribeOn(Schedulers.io())
+                        .retryWhen(errors -> errors.flatMap((Function<Throwable, Flowable<Long>>) error ->
+                                Flowable.timer(5, TimeUnit.SECONDS)))
+                        .subscribe(
+                                result -> Log.d(TAG, "createCustomer: Customer created successfully"),
+                                error -> Log.e(TAG, "createCustomer: Error creating customer", error)
+                        )
+        );
+    }
 
-            sendRequest(request);
-        });
+    private void handleCustomerCreationResponse(String response) {
+        try {
+            JSONObject object = new JSONObject(response);
+            customerID = object.getString("id");
+            Log.d(TAG, "handleCustomerCreationResponse: Customer ID: " + customerID);
+            getEphemeralKey();
+        } catch (JSONException e) {
+            Log.e(TAG, "handleCustomerCreationResponse: JSON exception: " + e.getLocalizedMessage());
+            showError(e.getLocalizedMessage());
+        }
     }
 
     private void getEphemeralKey() {
-        executorService.execute(() -> {
-            Log.d(TAG, "getEphemeralKey: Making request to get ephemeral key");
-            String url = "https://api.stripe.com/v1/ephemeral_keys";
-            StringRequest request = new StringRequest(Request.Method.POST, url,
-                    response -> {
-                        Log.d(TAG, "getEphemeralKey: Received response for ephemeral key");
-                        try {
-                            JSONObject object = new JSONObject(response);
-                            ephemeralKey = object.getString("id");
-                            Log.d(TAG, "getEphemeralKey: Ephemeral key: " + ephemeralKey);
-                            getClientSecret();
-                        } catch (JSONException e) {
-                            Log.e(TAG, "getEphemeralKey: JSON exception: " + e.getLocalizedMessage());
-                            runOnUiThread(() -> showError(e.getLocalizedMessage()));
-                        }
-                    },
-                    error -> {
-                        Log.e(TAG, "getEphemeralKey: Volley error: " + error.getLocalizedMessage());
-                        showError(error);
-                    }
-            ) {
-                @Override
-                public Map<String, String> getHeaders() throws AuthFailureError {
-                    Map<String, String> headers = new HashMap<>();
-                    headers.put("Authorization", "Bearer " + secretKey);
-                    headers.put("Stripe-Version", "2023-10-16");
-                    return headers;
-                }
+        compositeDisposable.add(
+                Flowable.fromCallable(() -> {
+                            Log.d(TAG, "getEphemeralKey: Making request to get ephemeral key");
+                            String url = "https://api.stripe.com/v1/ephemeral_keys";
+                            StringRequest request = new StringRequest(Request.Method.POST, url,
+                                    this::handleEphemeralKeyResponse,
+                                    this::handleError
+                            ) {
+                                @Override
+                                public Map<String, String> getHeaders() throws AuthFailureError {
+                                    Map<String, String> headers = new HashMap<>();
+                                    headers.put("Authorization", "Bearer " + secretKey);
+                                    headers.put("Stripe-Version", "2023-10-16");
+                                    return headers;
+                                }
 
-                @Nullable
-                @Override
-                protected Map<String, String> getParams() throws AuthFailureError {
-                    Map<String, String> params = new HashMap<>();
-                    params.put("customer", customerID);
-                    return params;
-                }
-            };
-
-            sendRequest(request);
-        });
+                                @Nullable
+                                @Override
+                                protected Map<String, String> getParams() throws AuthFailureError {
+                                    Map<String, String> params = new HashMap<>();
+                                    params.put("customer", customerID);
+                                    return params;
+                                }
+                            };
+                            sendRequest(request);
+                            return true;
+                        })
+                        .subscribeOn(Schedulers.io())
+                        .retryWhen(errors -> errors.flatMap((Function<Throwable, Flowable<Long>>) error ->
+                                Flowable.timer(5, TimeUnit.SECONDS)))
+                        .subscribe(
+                                result -> Log.d(TAG, "getEphemeralKey: Ephemeral key fetched successfully"),
+                                error -> Log.e(TAG, "getEphemeralKey: Error fetching ephemeral key", error)
+                        )
+        );
     }
+
+    private void handleEphemeralKeyResponse(String response) {
+        try {
+            JSONObject object = new JSONObject(response);
+            ephemeralKey = object.getString("id");
+            Log.d(TAG, "handleEphemeralKeyResponse: Ephemeral key: " + ephemeralKey);
+            getClientSecret();
+        } catch (JSONException e) {
+            Log.e(TAG, "handleEphemeralKeyResponse: JSON exception: " + e.getLocalizedMessage());
+            showError(e.getLocalizedMessage());
+        }
+    }
+
 
     private void getClientSecret() {
-        executorService.execute(() -> {
-            Log.d(TAG, "getClientSecret: Making request to get client secret");
-            String url = "https://api.stripe.com/v1/payment_intents";
-            StringRequest request = new StringRequest(Request.Method.POST, url,
-                    response -> {
-                        Log.d(TAG, "getClientSecret: Received response for client secret");
-                        try {
-                            JSONObject object = new JSONObject(response);
-                            clientSecret = object.getString("client_secret");
-                            Log.d(TAG, "getClientSecret: Client secret: " + clientSecret);
-                        } catch (JSONException e) {
-                            Log.e(TAG, "getClientSecret: JSON exception: " + e.getLocalizedMessage());
-                            runOnUiThread(() -> showError(e.getLocalizedMessage()));
-                        }
-                    },
-                    error -> {
-                        Log.e(TAG, "getClientSecret: Volley error: " + error.getLocalizedMessage());
-                        showError(error);
-                    }
-            ) {
-                @Override
-                public Map<String, String> getHeaders() throws AuthFailureError {
-                    Map<String, String> headers = new HashMap<>();
-                    headers.put("Authorization", "Bearer " + secretKey);
-                    return headers;
-                }
+        compositeDisposable.add(
+                Completable.fromAction(() -> {
+                            Log.d(TAG, "getClientSecret: Making request to get client secret");
+                            String url = "https://api.stripe.com/v1/payment_intents";
+                            StringRequest request = new StringRequest(Request.Method.POST, url,
+                                    this::handleClientSecretResponse,
+                                    this::handleError
+                            ) {
+                                @Override
+                                public Map<String, String> getHeaders() throws AuthFailureError {
+                                    Map<String, String> headers = new HashMap<>();
+                                    headers.put("Authorization", "Bearer " + secretKey);
+                                    return headers;
+                                }
 
-                @Nullable
-                @Override
-                protected Map<String, String> getParams() throws AuthFailureError {
-                    Map<String, String> params = new HashMap<>();
-                    params.put("customer", customerID);
-                    params.put("amount", "10000"); // amount in cents
-                    params.put("currency", "USD");
-                    params.put("automatic_payment_methods[enabled]", "true");
-                    return params;
-                }
-            };
-
-            sendRequest(request);
-        });
+                                @Nullable
+                                @Override
+                                protected Map<String, String> getParams() throws AuthFailureError {
+                                    Map<String, String> params = new HashMap<>();
+                                    params.put("customer", customerID);
+                                    params.put("amount", "10000"); // amount in cents
+                                    params.put("currency", "USD");
+                                    params.put("automatic_payment_methods[enabled]", "true");
+                                    return params;
+                                }
+                            };
+                            sendRequest(request);
+                        })
+                        .subscribeOn(Schedulers.io())
+                        .retryWhen(errors -> errors.flatMap((Function<Throwable, Flowable<Long>>) error ->
+                                Flowable.timer(5, TimeUnit.SECONDS)))
+                        .subscribe(
+                                () -> {
+                                    Log.d(TAG, "getClientSecret: Client secret fetched successfully");
+                                    runOnUiThread(() -> {
+                                        // Proceed with the payment flow
+                                        paymentFlow();
+                                    });
+                                },
+                                error -> {
+                                    Log.e(TAG, "getClientSecret: Error fetching client secret", error);
+                                    runOnUiThread(() -> {
+                                        showError(error.getLocalizedMessage());
+                                    });
+                                }
+                        )
+        );
     }
+
+
+    private void handleClientSecretResponse(String response) {
+        try {
+            JSONObject object = new JSONObject(response);
+            clientSecret = object.getString("client_secret");
+            Log.d(TAG, "handleClientSecretResponse: Client secret: " + clientSecret);
+        } catch (JSONException e) {
+            Log.e(TAG, "handleClientSecretResponse: JSON exception: " + e.getLocalizedMessage());
+            showError(e.getLocalizedMessage());
+        }
+    }
+
 
     private void paymentFlow() {
         if (clientSecret == null) {
@@ -221,13 +256,6 @@ public class MainActivity extends AppCompatActivity {
         requestQueue.add(request);
     }
 
-    private void showError(VolleyError error) {
-        runOnUiThread(() -> {
-            Log.e(TAG, "showError: " + error.getLocalizedMessage());
-            Toast.makeText(this, error.getLocalizedMessage(), Toast.LENGTH_LONG).show();
-        });
-    }
-
     private void showError(String message) {
         runOnUiThread(() -> {
             Log.e(TAG, "showError: " + message);
@@ -235,10 +263,9 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        Log.d(TAG, "onDestroy: Shutting down executor service");
-        executorService.shutdown();
+    private void handleError(VolleyError error) {
+        Log.e(TAG, "handleError: " + error.getLocalizedMessage());
+        showError(error.getLocalizedMessage());
     }
+
 }
